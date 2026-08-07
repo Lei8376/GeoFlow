@@ -1,0 +1,167 @@
+DATA:
+  data_root: /home/featurize/data/matterport_3d
+  data_root_2d: /home/featurize/data/matterport_2d
+  caption_path:
+  entity_path:
+
+  category_split:
+    novel_category: [9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20]
+    ignore_category: [255]
+    base_category: [0, 1, 2, 3, 4, 5, 6, 7, 8, 13]
+    all_category: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+  all_label: ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door',
+             'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain',
+             'refridgerator', 'shower curtain', 'toilet', 'sink', 'bathtub',
+             'otherfurniture', 'ceiling']
+  label: ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door',
+          'window', 'curtain']
+  label_2d: [1, 2, 3, 4, 5, 6, 7, 8, 9, 16]
+
+  test_ignore_label: [255]
+  ignore_label: 21
+  data_ratio: 0.5
+
+  classes: 10
+  test_classes: 21
+  num_queries: 200
+  scannet200: False
+  scores_threshold: 0.0
+
+  pixel_mean: [0.0, 0.0, 0.0]
+  pixel_std: [255.0, 255.0, 255.0]
+
+  aug: False
+  voxel_size: 0.02
+  input_color: True
+  use_shm: False
+  loop: 16
+  val_keep: 10000000
+
+Model:
+  arch_3d: MinkUNet34C
+  arch_binary_head: MinkUNet18A
+  lseg_model_path: pretrained/weights/lseg/demo_e200.ckpt
+
+  start_contra: 0
+  binary_2d_thresh: 0.5
+  scores_keep_thresh: 0
+
+  lr_3d: 0.0002
+  lr_others: 0.0001
+  weight_decay: 0.00001
+  warmup_epochs: 2
+  prompt_eng: True
+
+  loss_weight:
+    loss_3d: 4
+    loss_3d_pure: 4
+    loss_3d_contra: 1.2
+    loss_explicit_contra: 1.5
+    loss_explicit_contra_3d: 1.5
+    loss_explicit_contra_2d_pre: 4
+    loss_binary: 12
+    pseudo_label: 1
+    entity_gt_loss: 1.5
+
+  pseudo_label:
+    enable: True
+    temperature: 0.07
+    scores_keep_thresh: 0.05
+    infer_use_caption_boost: True
+    infer_caption_boost_factor: 0.3
+    infer_boost_only_novel_pred: False
+    use_view_entities: True
+
+  entity_gt:
+    enable: True
+    contrastive_temp: 0.07
+
+  cam:
+    enable: True
+    alignment_dim: 512
+    loss_weight: 1.5
+    kl_temperature: 1.2
+
+  mask_contra_3d: True
+  caption_contra: True
+  caption_contra_2d_pre: True
+  caption_contra_3d: True
+  use_ape: False
+
+  # --- GeoPurify geometry-guided pooling (paper Sec 3.4 / Table 7) ---
+  # These are also the hyper-params used to build the FROZEN target operator
+  # x1 = StudentAffinityPool(x0; phi_S) at GeoFlow training time.
+  pooling_iterations: 18        # T: number of A*F propagation steps
+  affinity_sharpen_factor: 20.0 # alpha (inverse-temperature); sharp affinity
+  pooling_knn: 96               # K nearest neighbours for the affinity graph
+  student_affinity_chunk_v: 8192 # rows/chunk for GeoFlow student-target affinity; output unchanged
+
+  # --- GeoFlow: geometry-conditioned flow matching ---
+  geodiff_cond_dim: 256
+  geodiff_hidden: 384            # 384 instead of 512 for 10 GiB headroom on RTX 3080
+  geodiff_blocks: 4
+  geodiff_target_knn: 96         # KNN for the (fallback) Sonata teacher target
+  geodiff_target_alpha: 20.0
+  geodiff_target_iters: 6
+  geodiff_target_chunk_v: 8192   # rows/chunk for fallback teacher target affinity
+  geoflow_ode_steps: 12 #original set as 8
+  geoflow_ode_solver: midpoint
+  geoflow_sigma_min: 0.0         # bump to 0.02 in the tuning pass for OT-CFM
+  geoflow_manifold_loss_w: 0.1
+  geoflow_loss_chunk_v: 32768    # rows/chunk for training MSE/cosine losses
+  geoflow_train_max_views: 96     # cap per-scene training views to keep DDP ranks balanced
+  geoflow_train_max_voxels: 65536 # stochastic voxel cap for GeoFlow training forward
+  geoflow_eval_max_voxels: 0      # 0 means full-scene ODE evaluation
+  geoflow_confidence_weighting: False # confidence-weight GeoFlow supervision
+  geoflow_confidence_min: 0.05    # minimum supervision weight for low-confidence voxels
+  geoflow_confidence_power: 1.0   # >1 further suppresses low-confidence voxels
+  geoflow_confidence_feature_w: 0.7 # multi-view semantic feature consistency weight
+  geoflow_confidence_view_w: 0.3  # observed-view-count confidence weight
+  geoflow_confidence_view_ref: 3.0 # view count at which view confidence saturates
+  geoflow_renorm_each_step: True
+  ddp_timeout_minutes: 120
+
+  # --- GeoFlow target redesign (Path B in the plan) ---
+  # When use_student_target=True and affinity_ckpt points at a valid GeoPurify
+  # student checkpoint, x1 = StudentAffinityPool(x0; phi_S) using exactly the
+  # SonataXAffinityTrainer.evaluate_scene operator (frozen, no_grad).
+  # Otherwise we fall back to the Sonata-affinity teacher target.
+  # TODO: Change the use_student_target to False to use the Sonata-affinity teacher target
+  use_student_target: False
+  affinity_ckpt: None #/home/featurize/weight/matterport_weight/geopurify.pth
+
+  mask_shape: [512, 640]
+
+  power: 0.9
+  momentum: 0.9
+  manual_seed: 5557
+  print_freq: 10
+  save_freq: 1
+  eval_freq: 5
+  base_ratio: 0.65
+  novel_ratio: 0.25
+  clip_name: "ViT-L-14"
+  learning_rate_type: cosine
+
+Distributed:
+  save_path:
+  resume: 
+  dist_url: tcp://127.0.0.1:6745
+  dist_backend: 'nccl'
+  multiprocessing_distributed: False
+  world_size: 1
+  rank: 0
+  train_gpu: [0]
+  workers: 1
+  batch_size: 4
+  batch_size_val: 1
+  infer_gpu: [0]
+  infer_workers: 0
+  infer_batch_size_val: 1
+  evaluate: True
+  train_s: True
+  epochs: 50
+  start_epoch: 0
+  grad_accum_steps: 1
+  use_amp: True

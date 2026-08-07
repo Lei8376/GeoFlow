@@ -1,0 +1,162 @@
+DATA:
+  data_root: /home/sunl/work/data/scannet_3d
+  data_root_2d: /home/sunl/work/data/scannet_2d
+  caption_path: data/caption/caption_view_scannet_vit-gpt2-image-captioning_.json
+  entity_path: data/caption/small/caption_entity_scannet_vit-gpt2-image-captioning_small.json
+  category_split:
+    novel_category: [ 9, 10, 11, 12, 14, 15, 16, 17, 18 ]
+    ignore_category: [19, 20]
+    base_category: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 13 ]
+    all_category: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+
+
+  all_label: ['wall','floor','cabinet','bed','chair','sofa','table','door','window','bookshelf','picture','counter','desk',
+  'curtain','refrigerator','shower curtain','toilet','sink','bathtub']
+
+  label: ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'curtain']
+  label_2d: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
+
+  test_ignore_label: [19,20]
+  ignore_label: 10
+  train_scene_file: ""
+  data_ratio: 0.5
+
+  classes: 10
+  test_classes: 19
+  num_queries: 200
+  scannet200: False
+  scores_threshold: 0.0
+
+  pixel_mean: [0.0, 0.0, 0.0]
+  pixel_std: [255.0, 255.0, 255.0]
+
+  aug: False
+  voxel_size: 0.02
+  input_color: True
+  use_shm: False
+  loop: 16
+  val_keep: 10000000
+
+Model:
+  arch_3d: MinkUNet34C
+  arch_binary_head: MinkUNet18A
+  lseg_model_path: /home/sunl/work/mix/lang_seg/demo_e200.ckpt
+
+  start_contra: 0
+  binary_2d_thresh: 0.5
+  scores_keep_thresh: 0
+
+  lr_3d: 0.0002
+  lr_others: 0.0001
+  weight_decay: 0.00001
+  warmup_epochs: 2
+  prompt_eng: True
+
+  loss_weight:
+    loss_3d: 4
+    loss_3d_pure: 4
+    loss_3d_contra: 1
+    loss_explicit_contra: 1.5
+    loss_explicit_contra_3d: 1.5
+    loss_explicit_contra_2d_pre: 4
+    loss_binary: 10
+    pseudo_label: 1
+    entity_gt_loss: 1.5
+
+  pseudo_label:
+    enable: True
+    temperature: 0.07
+    scores_keep_thresh: 0.05
+    infer_use_caption_boost: True
+    infer_caption_boost_factor: 0.3
+    infer_boost_only_novel_pred: False
+    use_view_entities: True
+
+  entity_gt:
+    enable: True
+    contrastive_temp: 0.07
+
+  cam:
+    enable: True
+    alignment_dim: 512
+    loss_weight: 1.5
+    kl_temperature: 1.2
+
+  mask_contra_3d: True
+  caption_contra: True
+  caption_contra_2d_pre: True
+  caption_contra_3d: True
+  use_ape: False
+
+  # --- GeoPurify 几何引导池化（论文 Sec 3.4 / Table 7） ---
+  pooling_iterations: 18        # T：A·F 特征传播步数
+  affinity_sharpen_factor: 20.0 # alpha：亲和度锐化系数，越大越偏向最相似邻居
+  pooling_knn: 96               # 亲和图中每个点使用的 K 个近邻
+  student_affinity_chunk_v: 8192 # GeoFlow 学生目标亲和度计算的行分块大小；只影响显存，不改变结果
+
+  # --- GeoFlow：几何条件流匹配 ---
+  geodiff_cond_dim: 256       # 几何条件编码维度（共享编码器）
+  geodiff_hidden: 512         # 速度场隐藏层宽度
+  geodiff_blocks: 4           # 速度场中的稀疏残差块数量
+  geodiff_target_knn: 96      # 构造 teacher（Sonata）流形目标时使用的 KNN 近邻数
+  geodiff_target_alpha: 20.0  # teacher 亲和度锐化系数
+  geodiff_target_iters: 6     # teacher 池化迭代次数，用于定义干净目标 x1
+  geodiff_target_chunk_v: 8192 # fallback teacher 目标亲和度计算的行分块大小
+  geoflow_ode_steps: 8        # 推理时 ODE 积分步数（少步积分）
+  geoflow_ode_solver: midpoint # ODE 求解器：euler 或 midpoint（二阶）
+  geoflow_sigma_min: 0.0      # OT-CFM 源端扰动；0 表示纯直线路径
+  geoflow_manifold_loss_w: 0.1 # 端点流形损失（1 - cosine）的权重
+  geoflow_loss_chunk_v: 32768 # 训练 MSE/cosine loss 的体素分块大小
+  geoflow_train_max_views: 96 # 每个 scene 训练最多使用的 view 数；0 表示使用全部 views
+  geoflow_train_max_voxels: 65536 # 每个 scene 训练 forward/loss 最多随机采样的 voxel 数；0 表示不截断
+  geoflow_eval_max_voxels: 0 # 验证/推理最多使用的 voxel 数；0 表示全场景 ODE，OOM 时可设 65536/32768
+  resume_weights_only: False # True 时只加载 GeoFlow 权重，不恢复 optimizer/scheduler/epoch
+  geoflow_confidence_weighting: False # 是否按跨视角语义一致性/观测数加权 GeoFlow 监督
+  geoflow_confidence_min: 0.05 # 开启加权后，不可靠 voxel 的最低监督权重
+  geoflow_confidence_power: 1.0 # >1 会进一步压低低置信度 voxel
+  geoflow_confidence_feature_w: 0.7 # 512 维多视角语义向量一致性权重
+  geoflow_confidence_view_w: 0.3 # 观测视角数权重
+  geoflow_confidence_view_ref: 3.0 # 观测视角数达到该值时 view confidence 饱和
+  geoflow_renorm_each_step: True  # ODE 每一步后重新归一化，让特征保持在单位球面上
+  ddp_timeout_minutes: 120
+
+  # --- GeoFlow 目标重设计（Path B） ---
+  # x1 = StudentAffinityPool(x0; phi_S)，其中 phi_S 是冻结的
+  # ScanNet Stage 0 GeoPurify 亲和度学生模型。
+  use_student_target: False
+  affinity_ckpt: /home/sunl/work/ Checkpoints/GeoPurify/scannet/geopurify.pth
+
+  mask_shape: [240,320]
+  power: 0.9
+  momentum: 0.9
+  manual_seed: 5557
+  print_freq: 10
+  save_freq: 1
+  eval_freq: 2
+  base_ratio: 0.65
+  novel_ratio: 0.2
+  clip_name: "ViT-L-14"
+  learning_rate_type: cosine
+
+Distributed:
+  save_path:
+  resume:
+  dist_url: tcp://127.0.0.1:6745
+  dist_backend: 'nccl'
+  multiprocessing_distributed: False
+  world_size: 1
+  rank: 0
+  train_gpu: [0]
+  workers: 2
+  batch_size: 4
+  batch_size_val: 1
+  infer_gpu: [0]
+  infer_workers: 1
+  infer_batch_size_val: 1
+  max_eval_scenes: 0
+  evaluate: True
+  train_s: True
+  epochs: 200
+  start_epoch: 0
+  grad_accum_steps: 1
+  use_amp: False
